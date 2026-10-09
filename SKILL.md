@@ -377,6 +377,36 @@ node scripts\cdp.js shot - <工作区>\_shots\live.png
 > 修法：把媒体目录加进 `run_worker_first`，并在 Worker 里自己实现 Range（记得剥掉 Range 头再问资产服务，
 > 且**不要相信返回的 content-length**——实测资产服务常常不给这个头）。
 
+### 在页面里放视频（实测配方）
+
+Workers 静态资源**单文件上限 25 MiB**，而游戏/手机录屏动辄 20MB+。实测：
+**四段 1080p 游戏录屏（原始 3.8–5.9 Mbps，共 85.5MB）→ CRF 26 重压后 17.4MB，省 80%**，肉眼几乎无差别。
+
+```bash
+# 1) 压缩：保持 1080p、CRF 26、音频 128k
+#    +faststart 把索引（moov）挪到文件开头，否则浏览器要下完整个文件才开始播
+ffmpeg -i raw.mp4 -c:v libx264 -preset slow -crf 26 -pix_fmt yuv420p \
+       -c:a aac -b:a 128k -movflags +faststart out.mp4
+
+# 2) 封面图（取第 2 秒那一帧）：省流量、列表也好看
+ffmpeg -ss 2 -i out.mp4 -frames:v 1 -vf scale=960:-2 -q:v 4 out.jpg
+```
+
+```html
+<video controls preload="metadata" playsinline poster="/media/clip1.jpg">
+  <source src="/media/clip1.mp4" type="video/mp4">
+  你的浏览器不支持内嵌视频，<a href="/media/clip1.mp4">点这里下载</a>。
+</video>
+```
+
+要点：
+- `preload="metadata"`：只拉文件头（一次很小的 Range 请求），不白耗访客流量
+- `playsinline`：iOS 上不强制全屏
+- **视频目录必须加进 `run_worker_first`**（如 `/media/*`），否则拖不动进度条（原因见 H 节）
+- **大二进制不要塞进 git**：素材放工作区目录，由组装脚本拷进部署目录
+  （`build-public.mjs` 的 `SOURCES` 加一条 `{ name: 'media', from: '<素材目录>' }`）
+- 文件名尽量用 ASCII；带空格/括号/分号也能用，但会多一次 307 规范化跳转
+
 **子路径 vs 子域名怎么选**
 
 | | 子路径（本篇） | 子域名 |

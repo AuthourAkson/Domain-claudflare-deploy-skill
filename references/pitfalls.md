@@ -103,6 +103,10 @@
 | Range 逻辑写了但完全不生效、也没有任何自定义响应头 | `env.ASSETS.fetch()` 返回的响应**常常没有 `content-length`**（实测 `len=none`），若代码用 `content-length` 判断大小就会提前 `return res` | 不要信任 `content-length`：把 body 读成 `ArrayBuffer`（或 `Uint8Array`）拿**真实长度**再切片；只有声明大小超过阈值的才跳过（防 OOM） |
 | 改了 `run_worker_first` 但行为没变 | 静态资源**没变化**时 wrangler 会跳过资源清单上传，路由配置可能没下发 | 让资源内容变一个字节（或删掉本地 `.wrangler` 状态）逼它重传清单；改完务必用真实请求验证（别只看配置） |
 | 分号/空格/括号文件名请求先返回 307 | Cloudflare 会把 `;` 规范化成 `%3B` | 正常，浏览器会自动跟随，最终 200 + 正确 `Content-Type` |
+| 视频**要下完才开始播**、进度条点了没反应 | MP4 的索引（moov atom）在文件末尾，浏览器必须先拿到它才能播/定位 | 转码时加 `-movflags +faststart`（把索引挪到开头）；已压好的也可以无损搬一下：`ffmpeg -i in.mp4 -c copy -movflags +faststart out.mp4` |
+| 部署报文件过大 | Workers 静态资源**单文件上限 25 MiB**（免费版文件数上限 2 万） | 重压：1080p + CRF 26 实测 **85.5MB → 17.4MB（省 80%）**，2D/动画类画面几乎看不出差别；实在太大就分片或换视频托管 |
+| 视频拖不动（和音频同一个病） | 静态资源没有 Range | 视频目录也要加进 `run_worker_first`（如 `/media/*`），只加音频目录不够 |
+| 列表页一打开就吃掉几十 MB 流量 | 默认 `preload` 会把视频预取一部分 | `<video preload="metadata" poster="...">`：只拉文件头 + 一张封面图 |
 
 ---
 
